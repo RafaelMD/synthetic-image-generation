@@ -5,3 +5,4 @@ tqdm
 albumentations
 opencv-python
 numpy
+crewai
