@@ -16,7 +16,12 @@ It also produces a **report** summarizing the number of images processed, succes
 ├── discarded_images/ # AI-rejected images (organized by entity)
 ├── .env # API key configuration
 ├── requirements.txt # Project dependencies
-├── main.py # Main pipeline script
+├── synthetic_crew/ # CrewAI orchestration package
+│ ├── agents.py # Crew agent role definitions
+│ ├── pipeline.py # End-to-end crew pipeline
+│ ├── tasks.py # Task prompts
+│ └── tools.py # Gemini-powered tools
+├── main.py # CLI entry-point that runs the crew
 └── README.md # Documentation
 ```
 
@@ -31,25 +36,26 @@ It also produces a **report** summarizing the number of images processed, succes
 2. **Context Analysis (Gemini AI)**  
    - Analyzes each input image and generates JSON contexts describing **where the entity could be placed**.
 
-3. **Entity Generation**  
-   - Calls the image model to insert the chosen entity into the given context.  
-   - Retries up to 3 times in case of API/server errors.
+3. **CrewAI Orchestration**
+   - Three agents coordinate the workflow:
+     - **Context Analyst** reads the image and proposes insertion scenarios.
+     - **Entity Image Generator** calls Gemini to place the entity following a chosen context.
+     - **Quality Judge** validates the realism of the generated entity.
+   - Each agent operates through dedicated tools that wrap the Gemini APIs and return structured JSON.
 
-4. **Quality Judge**  
-   - Another AI model evaluates the generated entity.  
-   - If it looks fake → moves to `discarded_images/`.
+4. **Data Augmentation & Reporting**
+   - Accepted images are augmented (horizontal flip) and saved next to their originals.
+   - The pipeline keeps per-image context metadata, counts successes/failures/discards and writes a summary `report.json`.
 
-5. **Data Augmentation**  
-   - Valid images are augmented (currently with horizontal flip).  
-   - Augmented versions are saved alongside the originals.
+### 👥 CrewAI Agents
 
-6. **Report Generation**  
-   - Produces a JSON report with statistics:
-     - Total images processed  
-     - API successes & failures  
-     - Discarded images  
-     - Augmented images generated  
-     - Processing time  
+| Agent | Responsibility | Key Tool |
+| ----- | -------------- | -------- |
+| **Context Analyst** | Reads the original image and proposes up to `context_limit` scenarios for the requested entity. | `analyze_image_contexts` |
+| **Entity Image Generator** | Calls Gemini with the chosen context to synthesize the entity inside the scene. | `generate_entity_image` |
+| **Quality Judge** | Verifies that the generated entity looks natural, rejecting unrealistic results. | `judge_generated_image` |
+
+Each agent has a focused goal and operates sequentially through the `SyntheticImageGenerationCrew` orchestrator.
 
 ---
 
@@ -73,6 +79,9 @@ Run the script with:
 ```bash
 python main.py -e <entity> [-c CONTEXT_LIMIT] [-i INPUT_FOLDER] [-o OUTPUT_FOLDER] [-d DISCARD_FOLDER]
 ```
+
+The CLI bootstraps the CrewAI agents, runs the sequential workflow (context discovery → image generation → judging), and falls back to the raw tool calls if the crew layer is unavailable so the pipeline can still complete.
+
 Arguments
 
 | Argument               | Description                              | Default            | Required |
